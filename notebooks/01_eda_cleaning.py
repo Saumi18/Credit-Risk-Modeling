@@ -1,11 +1,3 @@
-"""
-Day 2: EDA + Data Cleaning
-UCI Default of Credit Card Clients Dataset
-
-Run this top to bottom. It prints findings at each step so you can see
-exactly what's wrong with the raw data and why each cleaning decision
-is made - this is what you explain in an interview, not just the code.
-"""
 import pandas as pd
 import numpy as np
 
