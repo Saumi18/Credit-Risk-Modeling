@@ -1,0 +1,71 @@
+# config/features.yaml
+#
+# Auto-generated from data/processed/X_train.csv (Day 3 output).
+# This is the exact column list, in the exact order, the model was
+# trained on. If you ever retrain with different features, regenerate
+# this file - don't hand-edit it out of sync with the actual training code.
+
+target_column: "target"
+
+raw_input_columns:  # what a client sends: the 23 original UCI columns, pre-engineering
+  - LIMIT_BAL
+  - SEX
+  - EDUCATION
+  - MARRIAGE
+  - AGE
+  - PAY_1
+  - PAY_2
+  - PAY_3
+  - PAY_4
+  - PAY_5
+  - PAY_6
+  - BILL_AMT1
+  - BILL_AMT2
+  - BILL_AMT3
+  - BILL_AMT4
+  - BILL_AMT5
+  - BILL_AMT6
+  - PAY_AMT1
+  - PAY_AMT2
+  - PAY_AMT3
+  - PAY_AMT4
+  - PAY_AMT5
+  - PAY_AMT6
+
+model_feature_columns:  # full 30 columns after feature engineering, exact training order
+  - LIMIT_BAL
+  - SEX
+  - EDUCATION
+  - MARRIAGE
+  - AGE
+  - PAY_1
+  - PAY_2
+  - PAY_3
+  - PAY_4
+  - PAY_5
+  - PAY_6
+  - BILL_AMT1
+  - BILL_AMT2
+  - BILL_AMT3
+  - BILL_AMT4
+  - BILL_AMT5
+  - BILL_AMT6
+  - PAY_AMT1
+  - PAY_AMT2
+  - PAY_AMT3
+  - PAY_AMT4
+  - PAY_AMT5
+  - PAY_AMT6
+  - avg_bill_amt
+  - utilization_ratio
+  - avg_pay_amt
+  - payment_ratio
+  - delay_trend
+  - months_late
+  - max_delay
+
+decision_threshold: 0.5109  # from docs/chosen_threshold.json - F1-optimal cutoff
+
+model_paths:
+  lightgbm: "models/lightgbm_model.pkl"
+  scaler: "models/scaler.pkl"
