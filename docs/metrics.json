@@ -1,18 +1,23 @@
 [
   {
-    "model": "LogisticRegression",
-    "accuracy": 0.7445,
-    "precision": 0.4429,
-    "recall": 0.6021,
-    "f1": 0.5104,
-    "auc": 0.7449
-  },
-  {
-    "model": "LightGBM",
-    "accuracy": 0.7567,
+    "model": "Baseline (scale_pos_weight)",
     "precision": 0.4627,
     "recall": 0.6209,
     "f1": 0.5302,
     "auc": 0.7778
+  },
+  {
+    "model": "SMOTE + LightGBM (untuned)",
+    "precision": 0.6008,
+    "recall": 0.4288,
+    "f1": 0.5004,
+    "auc": 0.7703
+  },
+  {
+    "model": "Tuned LightGBM (final)",
+    "precision": 0.4835,
+    "recall": 0.6172,
+    "f1": 0.5422,
+    "auc": 0.7781
   }
 ]
