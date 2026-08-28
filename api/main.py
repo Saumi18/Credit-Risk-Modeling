@@ -14,8 +14,9 @@ import io
 import logging
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
 
 from src.preprocessing import load_config, load_scaler, prepare_features, SchemaError
 from src.model import load_model
@@ -25,6 +26,9 @@ from api.schemas import (
     CreditApplication, PredictionResponse, BatchPredictionResponse,
     ModelInfo, HealthResponse,
 )
+from database.connection import get_db, init_db
+from database.models import Prediction, ModelVersion
+from database.cache import get_cached_prediction, set_cached_prediction
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -46,6 +50,27 @@ threshold = config["decision_threshold"]
 
 logger.info(f"Model loaded. Decision threshold = {threshold}")
 
+MODEL_VERSION_ID = "lightgbm_tuned_v1"  # bump this string if you retrain/redeploy a new model
+
+
+@app.on_event("startup")
+def on_startup():
+    """Creates DB tables and registers this model version, if not already present.
+    Runs once when the API process starts, not per-request."""
+    try:
+        init_db()
+        from database.connection import SessionLocal
+        db = SessionLocal()
+        existing = db.get(ModelVersion, MODEL_VERSION_ID)
+        if not existing:
+            db.add(ModelVersion(id=MODEL_VERSION_ID, name="LightGBM (tuned, Optuna)", threshold=threshold))
+            db.commit()
+        db.close()
+        logger.info("Database ready.")
+    except Exception as e:
+        logger.warning(f"Database unavailable at startup ({e}). "
+                        f"API will still serve predictions, but won't persist them.")
+
 
 @app.get("/health", response_model=HealthResponse)
 def health():
@@ -63,19 +88,41 @@ def model_info():
 
 
 @app.post("/predict", response_model=PredictionResponse)
-def predict_single(application: CreditApplication):
-    df = pd.DataFrame([application.model_dump()])
+def predict_single(application: CreditApplication, db: Session = Depends(get_db)):
+    payload = application.model_dump()
+
+    cached = get_cached_prediction(payload)
+    if cached:
+        return cached
+
+    df = pd.DataFrame([payload])
     try:
         X = prepare_features(df, config, scaler)
     except SchemaError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     result = predict(model, X, threshold)
-    return {
+    response = {
         "prediction": result.predictions[0],
         "probability": result.probabilities[0],
         "threshold_used": result.threshold_used,
     }
+
+    set_cached_prediction(payload, response)
+
+    try:
+        db.add(Prediction(
+            model_version_id=MODEL_VERSION_ID,
+            input_data=payload,
+            prediction=response["prediction"],
+            probability=response["probability"],
+        ))
+        db.commit()
+    except Exception as e:
+        logger.warning(f"Failed to persist prediction: {e}")
+        db.rollback()
+
+    return response
 
 
 @app.post("/batch-predict", response_model=BatchPredictionResponse)
@@ -100,6 +147,20 @@ async def batch_predict(file: UploadFile = File(...)):
         "probabilities": result.probabilities,
         "threshold_used": result.threshold_used,
         "n_rows": result.n_rows,
+    }
+
+
+@app.get("/predictions/{prediction_id}")
+def get_prediction(prediction_id: str, db: Session = Depends(get_db)):
+    record = db.get(Prediction, prediction_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Prediction not found.")
+    return {
+        "id": record.id,
+        "input_data": record.input_data,
+        "prediction": record.prediction,
+        "probability": record.probability,
+        "created_at": record.created_at.isoformat(),
     }
 
 
