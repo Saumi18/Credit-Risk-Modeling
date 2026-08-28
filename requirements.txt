@@ -9,3 +9,4 @@ numpy~=2.2.5
 sqlalchemy
 psycopg2-binary
 redis
+rq

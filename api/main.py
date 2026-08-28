@@ -29,6 +29,7 @@ from api.schemas import (
 from database.connection import get_db, init_db
 from database.models import Prediction, ModelVersion
 from database.cache import get_cached_prediction, set_cached_prediction
+from workers.queue_client import enqueue_batch_job, get_job_status
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -125,29 +126,40 @@ def predict_single(application: CreditApplication, db: Session = Depends(get_db)
     return response
 
 
-@app.post("/batch-predict", response_model=BatchPredictionResponse)
+@app.post("/batch-predict")
 async def batch_predict(file: UploadFile = File(...)):
+    """Enqueues the batch job and returns immediately with a job_id.
+    This does NOT block waiting for scoring to finish - for a 10,000-row
+    CSV, this returns in milliseconds instead of however long scoring takes.
+    Check progress with GET /batch-predict/{job_id}."""
     if not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="Only .csv files are accepted.")
 
     contents = await file.read()
+
+    # Quick shape check before even enqueueing, so obviously bad files
+    # fail fast instead of taking a worker slot for no reason.
     try:
         df = pd.read_csv(io.BytesIO(contents))
     except Exception:
         raise HTTPException(status_code=400, detail="Could not parse file as CSV.")
 
     try:
-        X = prepare_features(df, config, scaler)
-    except SchemaError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        job_id = enqueue_batch_job(contents)
+    except Exception as e:
+        logger.exception("Failed to enqueue batch job")
+        raise HTTPException(status_code=503, detail=f"Could not enqueue job: {e}")
 
-    result = predict(model, X, threshold)
-    return {
-        "predictions": result.predictions,
-        "probabilities": result.probabilities,
-        "threshold_used": result.threshold_used,
-        "n_rows": result.n_rows,
-    }
+    return {"job_id": job_id, "status": "queued", "n_rows_submitted": len(df)}
+
+
+@app.get("/batch-predict/{job_id}")
+def batch_predict_status(job_id: str):
+    """Poll this to check on a submitted batch job."""
+    status = get_job_status(job_id)
+    if status["status"] == "not_found":
+        raise HTTPException(status_code=404, detail="Job not found.")
+    return status
 
 
 @app.get("/predictions/{prediction_id}")
