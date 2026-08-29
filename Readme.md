@@ -24,11 +24,9 @@ last 6 months of payment behavior), the system predicts:
 - **Risk classification** (LOW / HIGH), using an F1-optimized decision
   threshold rather than an arbitrary 50% cutoff
 
-## Screenshots
+## Screenshot
 
-*(Add 1-2 screenshots of the live UI here before sharing this repo -
-a screenshot of the form and a screenshot of a completed prediction
-with the risk gauge go a long way for anyone skimming the repo.)*
+![Credit Risk Decision System UI](docs/screenshots/ui-screenshot.png)
 
 ---
 
