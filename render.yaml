@@ -1,0 +1,67 @@
+# render.yaml
+#
+# Render Blueprint - defines the whole backend stack (api, worker, postgres,
+# redis) so it deploys together with one setup step, similar in spirit to
+# docker-compose.yml but in Render's own format.
+#
+# To use: push this to your repo, then in the Render dashboard choose
+# "New +" -> "Blueprint" -> connect this repo. Render reads this file and
+# provisions everything automatically.
+
+services:
+  # ---------------------------------------------------------------
+  # API - the FastAPI backend, publicly accessible
+  # ---------------------------------------------------------------
+  - type: web
+    name: credit-risk-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: credit-risk-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: credit-risk-redis
+          property: connectionString
+    healthCheckPath: /health
+
+  # ---------------------------------------------------------------
+  # Worker - background job processor, NOT publicly accessible
+  # ---------------------------------------------------------------
+  - type: worker
+    name: credit-risk-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: python -m workers.worker
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: credit-risk-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: credit-risk-redis
+          property: connectionString
+
+  # ---------------------------------------------------------------
+  # Redis - managed by Render
+  # ---------------------------------------------------------------
+  - type: redis
+    name: credit-risk-redis
+    plan: free
+    ipAllowList: []  # only accessible from other services in this project
+
+databases:
+  # ---------------------------------------------------------------
+  # Postgres - managed by Render
+  # ---------------------------------------------------------------
+  - name: credit-risk-db
+    plan: free
