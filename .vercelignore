@@ -1,0 +1,28 @@
+# .vercelignore
+#
+# Vercel auto-detects any /api folder with .py files as serverless
+# functions - this repo's api/ is our FastAPI backend (deployed
+# separately on Render), not something Vercel should touch. Without
+# this file, Vercel tries to bundle it plus all of requirements.txt's
+# heavy ML dependencies (lightgbm, shap, etc.), blowing past the 500MB
+# serverless function size limit.
+#
+# Only frontend/ and vercel.json are actually needed for this deployment.
+
+api/
+src/
+database/
+workers/
+models/
+data/
+docs/
+notebooks/
+tests/
+config/
+app.py
+requirements.txt
+Dockerfile
+docker-compose.yml
+docker-compose.dev.yml
+render.yaml
+.dockerignore
