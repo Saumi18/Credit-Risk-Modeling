@@ -12,6 +12,7 @@ Then visit http://127.0.0.1:8000/docs for interactive API docs
 """
 import io
 import logging
+import os
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
@@ -63,6 +64,36 @@ threshold = config["decision_threshold"]
 logger.info(f"Model loaded. Decision threshold = {threshold}")
 
 MODEL_VERSION_ID = "lightgbm_tuned_v1"  # bump this string if you retrain/redeploy a new model
+
+# ---------------------------------------------------------------------
+# Optional in-process worker thread.
+#
+# The "correct" architecture (used locally via docker-compose.yml) runs
+# the RQ worker as a SEPARATE process/container from the API - this keeps
+# a slow batch job from ever affecting API responsiveness.
+#
+# Render's free tier does not offer a standalone "background worker"
+# service type (that requires a paid plan). RUN_WORKER_IN_PROCESS=true
+# is a deliberate, documented trade-off for free-tier deployment: it runs
+# the same RQ worker logic in a background thread inside the API process,
+# so batch jobs still get processed without paying for a second service.
+# This is NOT how you'd run it in a real production system with real
+# traffic - it's a pragmatic compromise for a free portfolio deployment.
+# ---------------------------------------------------------------------
+RUN_WORKER_IN_PROCESS = os.getenv("RUN_WORKER_IN_PROCESS", "false").lower() == "true"
+
+if RUN_WORKER_IN_PROCESS:
+    import subprocess
+    import sys
+
+    # Spawned as a genuine separate OS process (not a thread) - RQ's worker
+    # installs signal handlers that only work in a process's main thread,
+    # so a background thread won't work here. This subprocess still runs
+    # inside the same Render service/container (to avoid needing a paid
+    # "background worker" plan), but is otherwise a real independent
+    # process, same as workers/worker.py run standalone via docker-compose.
+    logger.info("Launching worker as a subprocess (free-tier deployment mode).")
+    subprocess.Popen([sys.executable, "-m", "workers.worker"])
 
 
 @app.on_event("startup")

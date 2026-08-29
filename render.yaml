@@ -10,7 +10,14 @@
 
 services:
   # ---------------------------------------------------------------
-  # API - the FastAPI backend, publicly accessible
+  # API - the FastAPI backend, publicly accessible.
+  #
+  # RUN_WORKER_IN_PROCESS=true is set because Render's free tier does
+  # not support a standalone "background worker" service type (paid-plan
+  # only). This runs the batch-job worker as a thread inside this same
+  # service instead. See api/main.py for the full explanation - this is
+  # a free-tier trade-off, not the "real" architecture (which is what
+  # docker-compose.yml runs locally: api and worker as separate processes).
   # ---------------------------------------------------------------
   - type: web
     name: credit-risk-api
@@ -28,28 +35,9 @@ services:
           type: redis
           name: credit-risk-redis
           property: connectionString
+      - key: RUN_WORKER_IN_PROCESS
+        value: "true"
     healthCheckPath: /health
-
-  # ---------------------------------------------------------------
-  # Worker - background job processor, NOT publicly accessible
-  # ---------------------------------------------------------------
-  - type: worker
-    name: credit-risk-worker
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
-    dockerCommand: python -m workers.worker
-    plan: free
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: credit-risk-db
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: credit-risk-redis
-          property: connectionString
 
   # ---------------------------------------------------------------
   # Redis - managed by Render
