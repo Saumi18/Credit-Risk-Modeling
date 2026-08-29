@@ -1,0 +1,69 @@
+# docker-compose.yml
+#
+# Runs the ENTIRE system with one command: api + worker + postgres + redis.
+# This supersedes docker-compose.dev.yml (which only ran postgres+redis
+# while you ran the api/worker natively) - you can delete that file now,
+# or keep it around for quick native-mode debugging.
+#
+# Usage:
+#   docker compose up --build       # build images and start everything
+#   docker compose up -d --build    # same, but in background
+#   docker compose down             # stop everything
+#   docker compose down -v          # stop AND wipe database data
+#   docker compose logs -f worker   # follow just the worker's logs
+#   docker compose up --scale worker=3   # run 3 workers in parallel
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: credit_risk
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/credit_risk
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: ["python", "-m", "workers.worker"]
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/credit_risk
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
