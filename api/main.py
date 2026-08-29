@@ -15,6 +15,7 @@ import logging
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -38,6 +39,16 @@ app = FastAPI(
     title="Credit Risk Decision API",
     description="Predicts probability of credit default using a tuned LightGBM model.",
     version="1.0.0",
+)
+
+# CORS: allows the deployed frontend (a different domain, e.g. Vercel) to
+# call this API from the browser. "*" is fine for a portfolio project;
+# a real production system would list specific allowed origins instead.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ---------------------------------------------------------------------

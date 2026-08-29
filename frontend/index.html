@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Credit Risk Decision System</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+  .gauge-bg { stroke: #1e293b; }
+  .gauge-fill { transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1); }
+  .fade-in { animation: fadeIn 0.4s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .spinner { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+
+  <!-- ============ CONFIG - EDIT THIS BEFORE DEPLOYING ============ -->
+  <script>
+    // Point this at your deployed FastAPI backend URL.
+    // Local dev default: http://127.0.0.1:8000
+    // After deploying to Render, change to e.g. https://credit-risk-api.onrender.com
+    window.API_BASE_URL = "http://127.0.0.1:8000";
+  </script>
+  <!-- ================================================================ -->
+
+  <div class="max-w-4xl mx-auto px-6 py-12">
+
+    <!-- Header -->
+    <header class="mb-10">
+      <div class="flex items-center gap-3 mb-2">
+        <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center font-bold text-lg">₿</div>
+        <h1 class="text-2xl font-semibold tracking-tight">Credit Risk Decision System</h1>
+      </div>
+      <p class="text-slate-400 text-sm">
+        Predicts probability of credit default using a tuned LightGBM model
+        (F1 0.542, AUC 0.778) trained on the UCI Default of Credit Card Clients dataset.
+      </p>
+    </header>
+
+    <!-- API status banner -->
+    <div id="api-status" class="mb-6 px-4 py-3 rounded-lg text-sm border border-slate-800 bg-slate-900/50 flex items-center gap-2">
+      <div class="w-2 h-2 rounded-full bg-slate-600 animate-pulse"></div>
+      <span>Checking backend connection...</span>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-8">
+
+      <!-- ============ FORM ============ -->
+      <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6">
+        <h2 class="text-lg font-medium mb-5">Applicant Details</h2>
+
+        <div class="grid grid-cols-2 gap-4 mb-5">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1.5">Credit Limit (NT$)</label>
+            <input type="number" id="limit_bal" value="20000" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1.5">Age</label>
+            <input type="number" id="age" value="30" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1.5">Sex</label>
+            <select id="sex" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="1">Male</option>
+              <option value="2" selected>Female</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1.5">Education</label>
+            <select id="education" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="1">Graduate school</option>
+              <option value="2" selected>University</option>
+              <option value="3">High school</option>
+              <option value="4">Other</option>
+            </select>
+          </div>
+          <div class="col-span-2">
+            <label class="block text-xs text-slate-400 mb-1.5">Marital Status</label>
+            <select id="marriage" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="1" selected>Married</option>
+              <option value="2">Single</option>
+              <option value="3">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <h3 class="text-sm font-medium text-slate-300 mb-3">Last 6 Months of Repayment History</h3>
+        <p class="text-xs text-slate-500 mb-3">Payment status: -1 = paid duly, 0 = revolving credit, 1-9 = months delayed</p>
+
+        <div class="overflow-x-auto -mx-1">
+          <table class="w-full text-xs">
+            <thead>
+              <tr class="text-slate-500">
+                <th class="text-left font-normal py-1 px-1">Month</th>
+                <th class="text-left font-normal py-1 px-1">Status</th>
+                <th class="text-left font-normal py-1 px-1">Bill Amt</th>
+                <th class="text-left font-normal py-1 px-1">Paid Amt</th>
+              </tr>
+            </thead>
+            <tbody id="months-table"></tbody>
+          </table>
+        </div>
+
+        <button id="predict-btn" class="mt-6 w-full bg-indigo-600 hover:bg-indigo-500 transition-colors rounded-lg py-3 text-sm font-medium flex items-center justify-center gap-2">
+          <span id="btn-text">Predict Default Risk</span>
+        </button>
+      </div>
+
+      <!-- ============ RESULT ============ -->
+      <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 flex flex-col items-center justify-center min-h-[420px]">
+        <div id="result-placeholder" class="text-center text-slate-500">
+          <div class="text-4xl mb-3">📊</div>
+          <p class="text-sm">Fill in the applicant details and click Predict to see the risk assessment.</p>
+        </div>
+        <div id="result-content" class="hidden w-full fade-in"></div>
+      </div>
+
+    </div>
+
+    <footer class="mt-10 text-center text-xs text-slate-600">
+      Trained on 2005 Taiwanese credit card data (UCI benchmark dataset) for portfolio/demonstration purposes —
+      not calibrated for real-world lending decisions.
+    </footer>
+  </div>
+
+<script>
+  // ---------------------------------------------------------------
+  // Build the 6-month repayment history inputs
+  // ---------------------------------------------------------------
+  const defaults = {
+    pay:  [2, 2, -1, -1, -2, -2],
+    bill: [3913, 3102, 689, 0, 0, 0],
+    paid: [0, 689, 0, 0, 0, 0],
+  };
+  const tbody = document.getElementById("months-table");
+  for (let i = 0; i < 6; i++) {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td class="py-1 px-1 text-slate-400">M${i + 1}</td>
+      <td class="py-1 px-1"><input type="number" id="pay_${i}" value="${defaults.pay[i]}" class="w-16 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"></td>
+      <td class="py-1 px-1"><input type="number" id="bill_${i}" value="${defaults.bill[i]}" class="w-20 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"></td>
+      <td class="py-1 px-1"><input type="number" id="paid_${i}" value="${defaults.paid[i]}" class="w-20 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"></td>
+    `;
+    tbody.appendChild(row);
+  }
+
+  // ---------------------------------------------------------------
+  // Backend health check on load, with cold-start awareness
+  // ---------------------------------------------------------------
+  const statusEl = document.getElementById("api-status");
+
+  async function checkHealth() {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(`${window.API_BASE_URL}/health`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (res.ok) {
+        statusEl.innerHTML = `<div class="w-2 h-2 rounded-full bg-emerald-500"></div><span>Backend connected</span>`;
+        statusEl.className = "mb-6 px-4 py-3 rounded-lg text-sm border border-emerald-900 bg-emerald-950/40 flex items-center gap-2";
+      } else {
+        throw new Error("not ok");
+      }
+    } catch (e) {
+      statusEl.innerHTML = `<div class="w-2 h-2 rounded-full bg-amber-500"></div><span>Backend is waking up (free-tier hosting sleeps after inactivity) - this can take up to a minute on the first request.</span>`;
+      statusEl.className = "mb-6 px-4 py-3 rounded-lg text-sm border border-amber-900 bg-amber-950/40 flex items-center gap-2";
+    }
+  }
+  checkHealth();
+
+  // ---------------------------------------------------------------
+  // Predict
+  // ---------------------------------------------------------------
+  const btn = document.getElementById("predict-btn");
+  const btnText = document.getElementById("btn-text");
+  const placeholder = document.getElementById("result-placeholder");
+  const resultContent = document.getElementById("result-content");
+
+  function val(id) { return Number(document.getElementById(id).value); }
+
+  btn.addEventListener("click", async () => {
+    const payload = {
+      LIMIT_BAL: val("limit_bal"), SEX: val("sex"), EDUCATION: val("education"),
+      MARRIAGE: val("marriage"), AGE: val("age"),
+      PAY_1: val("pay_0"), PAY_2: val("pay_1"), PAY_3: val("pay_2"),
+      PAY_4: val("pay_3"), PAY_5: val("pay_4"), PAY_6: val("pay_5"),
+      BILL_AMT1: val("bill_0"), BILL_AMT2: val("bill_1"), BILL_AMT3: val("bill_2"),
+      BILL_AMT4: val("bill_3"), BILL_AMT5: val("bill_4"), BILL_AMT6: val("bill_5"),
+      PAY_AMT1: val("paid_0"), PAY_AMT2: val("paid_1"), PAY_AMT3: val("paid_2"),
+      PAY_AMT4: val("paid_3"), PAY_AMT5: val("paid_4"), PAY_AMT6: val("paid_5"),
+    };
+
+    btn.disabled = true;
+    btnText.innerHTML = `<span class="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full spinner mr-2"></span>Predicting...`;
+
+    // If the backend is asleep (free tier), warn the user after 4s that it's waking up
+    const wakeupTimer = setTimeout(() => {
+      btnText.innerHTML = `<span class="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full spinner mr-2"></span>Waking up server (free-tier cold start)...`;
+    }, 4000);
+
+    try {
+      const res = await fetch(`${window.API_BASE_URL}/predict`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      clearTimeout(wakeupTimer);
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Prediction failed");
+      }
+
+      const data = await res.json();
+      renderResult(data);
+    } catch (e) {
+      resultContent.innerHTML = `
+        <div class="text-center text-red-400 text-sm">
+          <div class="text-3xl mb-2">⚠️</div>
+          <p>${e.message || "Could not reach the backend. Check API_BASE_URL in the page source."}</p>
+        </div>`;
+      placeholder.classList.add("hidden");
+      resultContent.classList.remove("hidden");
+    } finally {
+      clearTimeout(wakeupTimer);
+      btn.disabled = false;
+      btnText.textContent = "Predict Default Risk";
+    }
+  });
+
+  function renderResult(data) {
+    const pct = (data.probability * 100).toFixed(1);
+    const isHigh = data.prediction === 1;
+    const color = isHigh ? "#ef4444" : "#10b981";
+    const circumference = 2 * Math.PI * 70;
+    const offset = circumference - (data.probability * circumference);
+
+    resultContent.innerHTML = `
+      <div class="text-center">
+        <div class="relative inline-block">
+          <svg width="180" height="180" viewBox="0 0 180 180">
+            <circle cx="90" cy="90" r="70" fill="none" stroke-width="14" class="gauge-bg" />
+            <circle cx="90" cy="90" r="70" fill="none" stroke-width="14"
+              stroke="${color}" stroke-linecap="round"
+              stroke-dasharray="${circumference}" stroke-dashoffset="${circumference}"
+              transform="rotate(-90 90 90)" class="gauge-fill"
+              style="stroke-dashoffset: ${offset}" />
+          </svg>
+          <div class="absolute inset-0 flex flex-col items-center justify-center">
+            <span class="text-3xl font-bold">${pct}%</span>
+            <span class="text-xs text-slate-400">default risk</span>
+          </div>
+        </div>
+
+        <div class="mt-4 inline-block px-4 py-1.5 rounded-full text-sm font-medium"
+             style="background: ${isHigh ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)'}; color: ${color};">
+          ${isHigh ? "⚠️ HIGH RISK" : "✅ LOW RISK"}
+        </div>
+
+        <p class="mt-4 text-xs text-slate-500">
+          Decision threshold: ${data.threshold_used} (F1-optimized via precision-recall curve analysis)
+        </p>
+      </div>
+    `;
+
+    setTimeout(() => {
+      const gauge = resultContent.querySelector(".gauge-fill");
+      if (gauge) gauge.style.strokeDashoffset = offset;
+    }, 50);
+
+    placeholder.classList.add("hidden");
+    resultContent.classList.remove("hidden");
+  }
+</script>
+</body>
+</html>
